@@ -173,7 +173,7 @@ for data_year in data_years:
              _, # y_pred_total_boos,
              _, # y_pred_total_svr,
              y_pred_total_linr] = pickle.load(f)
-            
+                    
         del f, y_pred_total_linr
         
         for model in models:

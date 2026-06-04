@@ -21,7 +21,7 @@ import seaborn as sns
 root = "C:/Users/WKS/Desktop/UNIBA/UN/RS/Risultati"
 
 year = 2022
-country = "ARG"
+country = "BRA"
 print(f"Selected country: {country}.")
 
 path_country_files = f"{root}/{year}/{country}"

@@ -10,6 +10,7 @@ Created on Fri Mar 13 09:44:31 2026
 # =============================================================================
 # 0) IMPORTS
 # =============================================================================
+import os
 import numpy as np
 import pandas as pd
 import scipy.stats
@@ -944,8 +945,8 @@ if __name__ == "__main__":
     pkl_path = f"{root}/Risultati/ML/results_data_{data_year}_egdi_{egdi_year}.pkl"
     with open(pkl_path, "rb") as f:
         [
-            shap_global_rf,
-            _,  # shap_global_boos
+            _, # shap_global_rf,
+            shap_global_boos,
             test_idx_global,
             _,  # train_idx_global
             _,  # explainer_rf_list
@@ -968,7 +969,7 @@ if __name__ == "__main__":
     # -------------------------
     top_features = shap_summary_and_top_features(
         dataset=globals()[f"df_{data_year}"].copy(),
-        global_shap=shap_global_rf,
+        global_shap=shap_global_boos,
         year_egdi=egdi_year,
         year_sdg=data_year,
         global_idx_test=test_idx_global,
@@ -1038,3 +1039,303 @@ if __name__ == "__main__":
     data_year=data_year,
     egdi_year=egdi_year,
     )
+#%% 2) Ablation per macrofamiglie
+
+from matplotlib.lines import Line2D
+
+if __name__ == "__main__":
+
+    # =========================
+    # 1) Dizionario macrofamiglie
+    # =========================
+
+    macrofamily_dict = {
+        # Digital / technological / ICT
+        "High-technology exports (% of manufactured exports) - WDI": "Digital and technological infrastructure",
+        "ICT service exports (% of service exports, BoP) - WDI": "Digital and technological infrastructure",
+        "ICT goods exports (% of total goods exports) - WDI": "Digital and technological infrastructure",
+        "ICT goods imports (% total goods imports) - WDI": "Digital and technological infrastructure",
+        "Medium and high-tech exports (% manufactured exports) - WDI": "Digital and technological infrastructure",
+        "Medium and high-tech manufacturing value added (% manufacturing value added) - WDI": "Digital and technological infrastructure",
+
+        # Education / human capital
+        "Lower secondary school starting age (years) - WDI": "Education and human capital",
+        "Primary education, duration (years) - WDI": "Education and human capital",
+        "Primary school starting age (years) - WDI": "Education and human capital",
+        "Labor force with advanced education (% of total working-age population with advanced education) - WDI": "Education and human capital",
+        "Educational attainment, at least Bachelor's or equivalent, population 25+, total (%) (cumulative) - WDI": "Education and human capital",
+
+        # Economy / services / trade
+        "Services, value added (% of GDP) - WDI": "Economic structure and services",
+        "Services, value added per worker (constant 2015 US$) - WDI": "Economic structure and services",
+        "Services, value added (annual % growth) - WDI": "Economic structure and services",
+        "Merchandise exports to high-income economies (% of total merchandise exports) - WDI": "Economic structure and services",
+        "Merchandise exports to low- and middle-income economies in East Asia & Pacific (% of total merchandise exports) - WDI": "Economic structure and services",
+        "Merchandise imports from high-income economies (% of total merchandise imports) - WDI": "Economic structure and services",
+
+        # Governance / institutions
+        "Control of Corruption: Estimate - WDI": "Governance and institutions",
+        "Government Effectiveness: Estimate - WDI": "Governance and institutions",
+        "Regulatory Quality: Estimate - WDI": "Governance and institutions",
+        "Rule of Law: Estimate - WDI": "Governance and institutions",
+        "Voice and Accountability: Estimate - WDI": "Governance and institutions",
+        "SG_NHR_IMPL - Proportion of countries with independent National Human Rights Institutions in compliance with the Paris Principles (%) - Goal 16 - Reporting Type: G - Units: PERCENT - Nature: G - SDG": "Governance and institutions",
+
+        # Statistical capacity
+        "Statistical performance indicators (SPI): Pillar 1 data use score (scale 0-100) - WDI": "Statistical capacity and data infrastructure",
+        "Statistical performance indicators (SPI): Pillar 2 data services score (scale 0-100) - WDI": "Statistical capacity and data infrastructure",
+        "Statistical performance indicators (SPI): Pillar 3 data products score  (scale 0-100) - WDI": "Statistical capacity and data infrastructure",
+        "Statistical performance indicators (SPI): Pillar 4 data sources score (scale 0-100) - WDI": "Statistical capacity and data infrastructure",
+        "Statistical performance indicators (SPI): Pillar 5 data infrastructure score (scale 0-100) - WDI": "Statistical capacity and data infrastructure",
+        "IQ_SPI_PIL4 - Data Sources performance index (Statistical Performance Indicators Pillar 4) (Index) - Goal 17 - Reporting Type: G - Units: INDEX - Nature: G - SDG": "Statistical capacity and data infrastructure",
+        "SG_STT_ODIN - Open Data Inventory (ODIN) Coverage Index - Goal 17 - Reporting Type: G - Units: INDEX - Nature: E - SDG": "Statistical capacity and data infrastructure",
+
+        # Financial system
+        "FI_FSI_FSANL - Non-performing loans to total gross loans (%) - Goal 10 - Reporting Type: G - Observation Status: A - Units: PERCENT - Nature: C - SDG": "Financial system and inclusion",
+        "FI_FSI_FSKA - Regulatory capital to assets (%) - Goal 10 - Reporting Type: G - Observation Status: A - Units: PERCENT - Nature: C - SDG": "Financial system and inclusion",
+        "FI_FSI_FSKRTC - Regulatory Tier 1 capital to risk-weighted assets (%) - Goal 10 - Reporting Type: G - Observation Status: A - Units: PERCENT - Nature: C - SDG": "Financial system and inclusion",
+        "FI_FSI_FSERA - Return on assets (%) - Goal 10 - Reporting Type: G - Observation Status: A - Units: PERCENT - Nature: C - SDG": "Financial system and inclusion",
+        "FI_FSI_FSLS - Liquid assets to short term liabilities (%) - Goal 10 - Reporting Type: G - Observation Status: A - Units: PERCENT - Nature: C - SDG": "Financial system and inclusion",
+        "FB_BNK_ACCSS - Proportion of adults (15 years and older) with an account at a financial institution or mobile-money-service provider, by sex (% of adults aged 15 years and older) - Goal 8 - Sex: BOTHSEX - Education level: AGG_0_1 - Location: ALLAREA - Reporting Type: G - Units: PERCENT - Age: 15+ - Nature: G - Quantile: _T - SDG": "Financial system and inclusion",
+        "FB_BNK_ACCSS - Proportion of adults (15 years and older) with an account at a financial institution or mobile-money-service provider, by sex (% of adults aged 15 years and older) - Goal 8 - Sex: FEMALE - Education level: _T - Location: ALLAREA - Reporting Type: G - Units: PERCENT - Age: 15+ - Nature: G - Quantile: _T - SDG": "Financial system and inclusion",
+        "FI_FSI_FSKNL - Non-performing loans net of provisions to capital (%) - Goal 10 - Reporting Type: G - Observation Status: A - Units: PERCENT - Nature: C - SDG": "Financial system and inclusion",
+
+        # Public finance
+        "GC_GOB_TAXD - Proportion of domestic budget funded by domestic taxes (%) - Goal 17 - Reporting Type: G - Observation Status: A - Units: PERCENT - Nature: C - SDG": "Public finance and fiscal capacity",
+        "GR_G14_GDP - Total government revenue (budgetary central government) as a proportion of GDP (%) - Goal 17 - Reporting Type: G - Observation Status: A - Units: PERCENT - Nature: C - SDG": "Public finance and fiscal capacity",
+        "Primary government expenditures as a proportion of original approved budget (%) - WDI": "Public finance and fiscal capacity",
+
+        # Logistics
+        "Logistics performance index: Ability to track and trace consignments (1=low to 5=high) - WDI": "Logistics and trade facilitation",
+        "Logistics performance index: Efficiency of customs clearance process (1=low to 5=high) - WDI": "Logistics and trade facilitation",
+    }
+
+    macrofamily_order = [
+        ("Governance and institutions", "GI"),
+        ("Statistical capacity and data infrastructure", "SD"),
+        ("Economic structure and services", "ES"),
+        ("Logistics and trade facilitation", "LT"),
+        ("Digital and technological infrastructure", "DT"),
+        ("Education and human capital", "EH"),
+        ("Financial system and inclusion", "FI"),
+        ("Public finance and fiscal capacity", "PF"),
+    ]
+
+    data_macro = globals()[f"df_{data_year}"].copy()
+
+    unmapped_features = [
+        c for c in data_macro.columns
+        if c not in macrofamily_dict
+    ]
+
+    if len(unmapped_features) > 0:
+        raise ValueError(
+            f"Ci sono {len(unmapped_features)} feature NON mappate.\n"
+            f"Prime feature non mappate:\n{unmapped_features[:30]}"
+        )
+
+    dfs_macro = {}
+    removed_macro_dict = {}
+    macro_rows = []
+    removed_so_far = []
+
+    for step, (macro_name, macro_abbr) in enumerate(macrofamily_order, start=1):
+
+        features_this_macro = [
+            feature
+            for feature, family in macrofamily_dict.items()
+            if family == macro_name and feature in data_macro.columns
+        ]
+
+        removed_so_far.extend(features_this_macro)
+        removed_so_far = list(dict.fromkeys(removed_so_far))
+
+        degraded = data_macro.drop(columns=removed_so_far)
+
+        removed_label = "+".join([
+            abbr for _, abbr in macrofamily_order[:step]
+        ])
+
+        key = f"macro_step_{step:02d}_removed_{removed_label}"
+
+        dfs_macro[key] = degraded
+        removed_macro_dict[key] = removed_so_far.copy()
+
+        macro_rows.append({
+            "key": key,
+            "step": step,
+            "removed_macrofamilies": removed_label,
+            "last_removed_macrofamily": macro_name,
+            "last_removed_abbr": macro_abbr,
+            "removed_features": len(removed_so_far),
+            "remaining_features": degraded.shape[1],
+        })
+
+        print(
+            f"[{key}] removed={removed_label} | "
+            f"removed_features={len(removed_so_far)} | "
+            f"remaining_features={degraded.shape[1]}"
+        )
+
+    macro_summary_df = pd.DataFrame(macro_rows)
+
+    dfs_macro_for_cv = {
+        key: df
+        for key, df in dfs_macro.items()
+        if df.shape[1] > 0
+    }
+
+    if len(dfs_macro_for_cv) < len(dfs_macro):
+        print("[INFO] Lo step finale con zero feature è stato escluso dalla CV.")
+
+    out_macro = run_model_ablation_from_dfs(
+        dfs=dfs_macro_for_cv,
+        egdi=egdi,
+        model="XgB",
+        run_one_repetition_fn=run_one_repetition,
+        k=k_folds,
+        n=n_reps,
+        boxcox=False,
+        compute_shap=False,
+        n_jobs=-1,
+        backend="loky",
+        verbose_parallel=10,
+        do_plot=False,
+        plot_cfg=plot_cfg,
+    )
+
+    macro_perf_df = out_macro["summary_df"].copy()
+
+    macro_plot_df = macro_perf_df.merge(
+    macro_summary_df[
+        [
+            "key",
+            "step",
+            "removed_macrofamilies",
+            "last_removed_abbr",
+            "removed_features",
+            "remaining_features",
+        ]
+    ],
+    on=["key", "remaining_features"],
+    how="left")
+
+    macro_plot_df = macro_plot_df.sort_values("step")
+    
+    
+    for macro_name, macro_abbr in macrofamily_order:
+
+        n_features = sum(
+            1
+            for feature, family in macrofamily_dict.items()
+            if family == macro_name and feature in data_macro.columns
+        )
+    
+        print(f"{macro_abbr}: {n_features}")
+
+    # =========================
+    # Plot paper-style
+    # =========================
+    
+    x_labels = [
+    (
+        row['last_removed_abbr'],
+        f"{row['remaining_features']} features"
+    )
+    for _, row in macro_plot_df.iterrows()]
+    x = np.arange(len(x_labels))
+    
+    y = macro_plot_df["r2_median"].values
+    yerr = macro_plot_df["r2_iqr"].values
+    
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
+    
+    ax.fill_between(
+        x,
+        y - yerr,
+        y + yerr,
+        color="tab:red",
+        alpha=0.18,
+        linewidth=0,
+        label="IQR"
+    )
+    
+    ax.plot(
+        x,
+        y,
+        color="tab:red",
+        marker="o",
+        markersize=5,
+        linewidth=2.2,
+        label="Median $R^2$"
+    )
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(
+    [f"{abbr}\n{nfeat}" for abbr, nfeat in x_labels],
+    fontsize=10
+    )
+    
+    macro_colors = {
+    "GI": "darkviolet",
+    "SD": "mediumblue",
+    "ES": "royalblue",
+    "LT": "cornflowerblue",
+    "DT": "teal",
+    "EH": "green",
+    "FI": "darkorange",
+    "PF": "orange",
+    }
+    
+    for tick, (abbr, nfeat) in zip(ax.get_xticklabels(), x_labels):
+
+        tick.set_text(f"{abbr}\n{nfeat}")
+        tick.set_color(macro_colors[abbr])
+        tick.set_fontweight("bold")
+    
+    # ax.set_xlabel("Removed macrofamily at each step (remaining features)", fontsize=14)
+    ax.set_ylabel("$R^2$", fontsize=18)
+    plt.yticks(fontsize=13)
+    
+    # ax.set_title(
+    #     f"Macrofamily-based ablation: {data_year} $\\rightarrow$ EGDI {egdi_year}",
+    #     fontsize=12,
+    #     pad=10
+    # )
+    
+    ax.grid(True, axis="y", alpha=0.25)
+    ax.grid(False, axis="x")
+    
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    
+    ax.legend(
+        frameon=False,
+        fontsize=12,
+        loc="lower left"
+    )
+    
+    ax.set_ylim(
+        max(0, np.nanmin(y - yerr) - 0.05),
+        min(1, np.nanmax(y + yerr) + 0.05)
+    )
+    
+    fig.tight_layout()
+    
+    save_dir = f"{root}/Immagini/Ablation"
+    os.makedirs(save_dir, exist_ok=True)
+    
+    save_path_png = (
+        f"{save_dir}/macrofamily_ablation_data_"
+        f"{data_year}_egdi_{egdi_year}.png"
+    )
+    
+    save_path_pdf = (
+        f"{save_dir}/macrofamily_ablation_data_"
+        f"{data_year}_egdi_{egdi_year}.pdf"
+    )
+    
+    fig.savefig(save_path_png, dpi=300, bbox_inches="tight")
+    fig.savefig(save_path_pdf, bbox_inches="tight")
+    
+    plt.show()

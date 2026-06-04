@@ -577,7 +577,7 @@ def modify_feature(
     # Se la feature è booleana, flippo a seconda di sign
     else:
         z_new = 1.0 if sign == "+" else 0.0
-        cost = float(1)
+        cost = float(0.25)
         delta_z = z_new - z_old
         country_copy[feature_name] = z_new
     

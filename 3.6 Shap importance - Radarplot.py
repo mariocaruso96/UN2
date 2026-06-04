@@ -528,64 +528,10 @@ macrofamily_global_count = (
     .to_dict()
 )
 
-
-# =========================
-# 6) Heatmap macrofamiglie - MEDIA
-# =========================
-
-heatmap_df = macrofamily_shap_importance_df.pivot_table(
-    index="Macrofamily",
-    columns="Configuration",
-    values="RelativeMeanImportance_Percentage",
-    aggfunc="mean"
-)
-
-# Ordino le colonne temporalmente
-ordered_columns = []
-
-for data_year in data_years:
-    for egdi_year in egdi_years[egdi_years >= data_year]:
-        col = f"{data_year}→{egdi_year}"
-        if col in heatmap_df.columns:
-            ordered_columns.append(col)
-
-heatmap_df = heatmap_df[ordered_columns]
-
-# Ordino le righe per importanza media, ignorando i NaN
-heatmap_df["Mean_Importance"] = heatmap_df.mean(axis=1, skipna=True)
-heatmap_df = heatmap_df.sort_values("Mean_Importance", ascending=False)
-heatmap_df = heatmap_df.drop(columns="Mean_Importance")
-
-# Versione con NaN per availability matrix
-heatmap_df_with_nan = heatmap_df.copy()
-
-# Versione con zero per plot principale
-heatmap_df = heatmap_df.fillna(0)
-
-# heatmap_df.to_csv(
-#     f"{root}/macrofamily_mean_shap_heatmap_matrix_filled_zero.csv"
-# )
-
-# heatmap_df_with_nan.to_csv(
-#     f"{root}/macrofamily_mean_shap_heatmap_matrix_with_nan.csv"
-# )
-
-
-# =========================
-# 7) Availability matrix
-# =========================
-
-availability_df = heatmap_df_with_nan.notna().astype(int)
-
-# availability_df.to_csv(
-#     f"{root}/macrofamily_availability_matrix.csv"
-# )
-
 #%%
 
-
 # =========================
-# 8) Abbreviazioni + colori macrofamiglie
+# 6) Radar plot macrofamiglie - MEDIA SHAP
 # =========================
 
 macrofamily_abbrev = {
@@ -612,175 +558,139 @@ label_colors = {
     "OT": "gray"
 }
 
-
 # =========================
-# 9) Etichette y con abbreviazioni
-# =========================
-
-ytick_labels = [
-    f"{macrofamily_abbrev.get(family, family)} "
-    f"(n={macrofamily_global_count.get(family, 0)})"
-    for family in heatmap_df.index
-]
-
-
-# =========================
-# 10) Plot heatmap SHAP importance - MEDIA
+# Aggregazione globale per macrofamiglia
 # =========================
 
-plt.figure(figsize=(23, 8))
-
-ax = sns.heatmap(
-    heatmap_df,
-    cmap="viridis",
-    linewidths=0.4,
-    linecolor="white",
-    cbar_kws={
-        "label": "Relative mean SHAP importance (%)"
-    }
+radar_df = (
+    macrofamily_shap_importance_df
+    .groupby("Macrofamily", as_index=False)
+    .agg(
+        Mean_Relative_Importance=("RelativeMeanImportance_Percentage", "mean")
+    )
 )
 
-# =========================
-# Colorbar
-# =========================
+radar_df["Abbreviation"] = radar_df["Macrofamily"].map(macrofamily_abbrev)
 
-cbar = ax.collections[0].colorbar
-cbar.ax.tick_params(labelsize=35)
-cbar.ax.yaxis.label.set_size(25)
+radar_df = radar_df.dropna(subset=["Abbreviation"]).copy()
 
-# =========================
-# Assi
-# =========================
-
-ax.set_xlabel("Temporal configuration", fontsize=30)
-ax.set_ylabel("Macrofamilies", fontsize=30)
-
-ax.set_yticklabels(
-    ytick_labels,
-    rotation=0,
-    fontsize=25
+# ordine decrescente per importanza media
+radar_df = (
+    radar_df
+    .sort_values("Mean_Relative_Importance", ascending=False)
+    .reset_index(drop=True)
 )
 
-# =========================
-# Colore + bold labels
-# =========================
+radar_order = radar_df["Abbreviation"].tolist()
 
-for tick, family in zip(ax.get_yticklabels(), heatmap_df.index):
+labels = radar_df["Abbreviation"].values
+values = radar_df["Mean_Relative_Importance"].values
 
-    abbrev = macrofamily_abbrev.get(family, family)
+values_closed = np.concatenate([values, [values[0]]])
 
-    tick.set_color(
-        label_colors.get(abbrev, "black")
+angles = np.linspace(
+    0,
+    2 * np.pi,
+    len(labels),
+    endpoint=False
+)
+
+angles_closed = np.concatenate([angles, [angles[0]]])
+
+fig, ax = plt.subplots(
+    figsize=(14, 14),
+    subplot_kw=dict(polar=True)
+)
+
+# primo valore in alto, poi senso orario
+ax.set_theta_offset(np.pi / 2)
+ax.set_theta_direction(-1)
+
+ax.plot(
+    angles_closed,
+    values_closed,
+    color="blue",
+    linewidth=3,
+    marker=".",
+    markersize=10
+)
+
+ax.fill(
+    angles_closed,
+    values_closed,
+    color="dodgerblue",
+    alpha=0.35
+)
+
+ax.set_xticks(angles)
+
+xtick_labels = ax.set_xticklabels(
+    labels,
+    fontsize=25,
+    fontweight="bold"
+)
+
+for label in xtick_labels:
+    txt = label.get_text()
+    label.set_color(label_colors[txt])
+
+ax.grid(
+    True,
+    linewidth=1.8,
+    alpha=0.8
+)
+
+ax.tick_params(
+    axis="y",
+    labelsize=16
+)
+
+ax.set_rlabel_position(315)
+
+from matplotlib.lines import Line2D
+
+legend_elements = []
+
+for abbr in radar_order:
+
+    name = radar_df.loc[
+        radar_df["Abbreviation"] == abbr,
+        "Macrofamily"
+    ].iloc[0]
+
+    legend_elements.append(
+        Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            label=f"{abbr} = {name}",
+            markerfacecolor=label_colors[abbr],
+            markersize=22
+        )
     )
 
-    tick.set_fontweight("bold")
-
-# =========================
-# X ticks
-# =========================
-
-plt.xticks(
-    rotation=55,
-    ha="right",
-    size=15
+legend = ax.legend(
+    handles=legend_elements,
+    loc="center left",
+    bbox_to_anchor=(1.25, 0.5),
+    fontsize=14,
+    frameon=True,
+    edgecolor="white",
+    borderpad=1.5,
+    labelspacing=2.3,
+    handletextpad=1
 )
+
+legend.get_frame().set_linewidth(2)
+
+for text in legend.get_texts():
+
+    abbr = text.get_text().split(" = ")[0]
+
+    text.set_color(label_colors[abbr])
+    text.set_fontweight("bold")
 
 plt.tight_layout()
-
-# =========================
-# Save
-# =========================
-
-plt.savefig(
-    f"{output_dir}/macrofamily_mean_shap_importance_heatmap_filled_zero.png",
-    dpi=600,
-    bbox_inches="tight"
-)
-
-plt.savefig(
-    f"{output_dir}/macrofamily_mean_shap_importance_heatmap_filled_zero.pdf",
-    bbox_inches="tight"
-)
-
-plt.show()
-
-
-# =========================
-# 11) Plot availability matrix
-# =========================
-
-plt.figure(figsize=(23, 8))
-
-ax = sns.heatmap(
-    availability_df.loc[heatmap_df.index],
-    cmap="Blues",
-    linewidths=0.4,
-    linecolor="white",
-    cbar_kws={
-        "label": "Feature-family availability"
-    }
-)
-
-# =========================
-# Colorbar
-# =========================
-
-cbar = ax.collections[0].colorbar
-cbar.ax.tick_params(labelsize=35)
-cbar.ax.yaxis.label.set_size(25)
-
-# =========================
-# Assi
-# =========================
-
-ax.set_xlabel("Temporal configuration", fontsize=30)
-ax.set_ylabel("Macrofamilies", fontsize=30)
-
-ax.set_yticklabels(
-    ytick_labels,
-    rotation=0,
-    fontsize=25
-)
-
-# =========================
-# Colore + bold labels
-# =========================
-
-for tick, family in zip(ax.get_yticklabels(), heatmap_df.index):
-
-    abbrev = macrofamily_abbrev.get(family, family)
-
-    tick.set_color(
-        label_colors.get(abbrev, "black")
-    )
-
-    tick.set_fontweight("bold")
-
-# =========================
-# X ticks
-# =========================
-
-plt.xticks(
-    rotation=55,
-    ha="right",
-    size=15
-)
-
-plt.tight_layout()
-
-# =========================
-# Save
-# =========================
-
-plt.savefig(
-    f"{output_dir}/macrofamily_availability_matrix.png",
-    dpi=600,
-    bbox_inches="tight"
-)
-
-plt.savefig(
-    f"{output_dir}/macrofamily_availability_matrix.pdf",
-    bbox_inches="tight"
-)
-
+plt.savefig(f"{root}/Immagini/Shap/Macrofamily/shap_macrofamilies_radarplot.png", bbox_inches = 'tight', dpi = 300)
 plt.show()
