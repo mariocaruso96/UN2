@@ -422,10 +422,9 @@ all_egdis = pd.read_csv(f"{root}/Data/EGDIs/egdi_vals.csv")
 countries = list(country_to_iso3.values())
 
 # Casi singoli
-interesting_countries = ["CIV",
-                         "ITA",
+interesting_countries = ["ITA",
                          "DZA",
-                         "JPN"]
+                         "AFG"]
 
 data_years = np.arange(2022, 2026, 2)
 egdi_years = np.arange(2022, 2026, 2)
@@ -472,7 +471,8 @@ for data_year in data_years:
         
         # Feature importance: numero di feature da considerare
         num_cols = globals()[f"df_{data_year}"].shape[1]
-        how_many = num_cols if num_cols < 20 else 20
+        # how_many = num_cols if num_cols < 20 else 20
+        how_many = num_cols
         print(f"Features to consider: {how_many}.")
 
         # Caso globale

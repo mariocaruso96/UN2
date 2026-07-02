@@ -180,6 +180,10 @@ others_cols_master = ['SG_INF_ACCSS - Countries that adopt and implement constit
 manufacturing_cols_master = [col for col in data.columns if "Manufacturing" in col]
 
 cols_to_delete = ordinal_cols_master + categorical_cols_master + others_cols_master + manufacturing_cols_master
+
+for col in cols_to_delete:
+    print(f"-  {col}")
+
 data = data.drop(cols_to_delete, axis = 1)
 
 del ordinal_cols_master, categorical_cols_master, others_cols_master, manufacturing_cols_master, cols_to_delete
